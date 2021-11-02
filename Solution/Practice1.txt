@@ -1,0 +1,135 @@
+1)
+val data = spark.read
+.option("compression", "snappy")
+.format("com.databricks.spark.avro")
+.load("testData/cca175/practice1/q1").toDF()
+
+data.createOrReplaceTempView("order_view")
+
+val result = spark.sql("""
+select order_id, order_status from order_view
+""")
+
+result.write
+.option("compression", "gzip")
+.parquet("testData/cca175/practice1/q1/output/")
+
+2)
+val order_data = spark.read
+.csv("input file path")
+.ToDF()
+
+val customer_data = spark.read
+.csv("input file path")
+.ToDF()
+
+val result = spark.sql("""
+select cust.customer_id, cust.customer_fname, count(1) from cust, order_view
+where cust.customer_id = order_view.order_customer_id
+and order_view.order_status = 'COMPLETE'
+and count(order_view.order_customer_id) > 4
+group by cust.customer_id, cust.customer_fname, count(order_view.order_customer_id)
+order by count(order_view.order_customer_id) asc
+""")
+
+3)
+val data = spark.read
+.parquet("testData/cca175/practice1/q3")
+.toDF
+
+data.createOrReplaceTempView("product_view")
+
+val result = spark.sql("""
+select product_category_id, max(product_price) from product_view
+group by product_category_id
+order by max(product_price) desc
+""")
+
+val output = result.map(x => x.mkString("|")
+
+output.repartition(1).write
+.option("compression", "gzip")
+.text("testData/cca175/practice1/q3/output2/")
+
+4)
+val data = spark.read
+.option("inferSchema", "true")
+.option("delimiter", "\t")
+.csv("testData/cca175/practice1/q4")
+.toDF("customer_id", "customer_name", "customer_city")
+
+data.createOrReplaceTempView("cust_view")
+val result = spark.sql("""
+select * from cust_view where customer_city = "Caguas"
+""")
+
+result.write
+.option("compression", "deflate")
+.format("com.databricks.spark.avro")
+.save("testData/cca175/practice1/q4/output/")
+
+5)
+val data = spark.read
+.format("com.databricks.spark.avro")
+.load("testData/cca175/practice1/q5")
+.toDF
+
+data.createOrReplaceTempView("cust_view")
+val result = spark.sql("""
+select customer_id, subString(customer_fname, 0 , 3) as customer_fname, customer_lname from cust_view
+""")
+
+result.map(x=>x.mkString("\t")).write
+.option("compression", "bzip2")
+.text("testData/cca175/practice1/q5/output/")
+
+6)
+val result = spark.sql("""
+select product_id, concat(subStr(product_name, 0, 5), "|", product_category_id) as product_name from product_replica1
+""")
+
+result.write
+.option("compression", "uncompressed")
+.csv("testData/cca175/practice1/q6/output8/")
+
+7)
+val data = spark.read
+.parquet("testData/cca175/practice1/q7")
+.toDF()
+
+data.createOrReplaceTempView("order_view")
+val result = spark.sql("""
+select to_date(from_unixtime(order_date / 1000)) as order_date, count(1) from order_view
+where to_date(from_unixtime(order_date / 1000)) like '2014-03%'
+and order_status = 'PENDING_PAYMENT'
+group by to_date(from_unixtime(order_date / 1000))
+""")
+
+result.write
+.json("testData/cca175/practice1/q7/output/")
+
+8)
+val order_data = spark.read
+.format("com.databricks.spark.avro")
+.load("testData/cca175/practice1/q8/orders")
+
+val customer_data = spark.read
+.format("com.databricks.spark.avro")
+.load("testData/cca175/practice1/q8/customers")
+
+order_data.createOrReplaceTempView("order_view")
+customer_data.createOrReplaceTempView("customer_view")
+
+val result = spark.sql("""
+select customer_view.customer_id, customer_view.customer_fname, customer_view.customer_lname,
+to_date(from_unixtime(order_view.order_date / 1000)), customer_view.customer_state, count(1) from order_view, customer_view
+where customer_view.customer_id = order_view.order_customer_id
+and to_date(from_unixtime(order_view.order_date / 1000)) like '2013%'
+and order_view.order_status = 'COMPLETE'
+group by customer_view.customer_id, customer_view.customer_fname, customer_view.customer_lname, to_date(from_unixtime(order_view.order_date / 1000)), customer_view.customer_state
+order by count(1) desc
+""")
+
+result.select("customer_fname", "customer_lname", "customer_state", "count(1)").write.partitionBy("customer_state")
+.format("hive")
+.saveAsTable("customer_order")

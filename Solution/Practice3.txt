@@ -1,0 +1,93 @@
+1)
+val customer_data = spark.read
+.format("com.databricks.spark.avro")
+.load("testData/cca175/practice3/q1/customers")
+.toDF()
+
+val order_data = spark.read
+.format("com.databricks.spark.avro")
+.load("testData/cca175/practice3/q1/orders")
+.toDF()
+
+customer_data.createOrReplaceTempView("cust_view")
+order_data.createOrReplaceTempView("order_view")
+
+val result = spark.sql("""
+select cust_view.customer_id, concat(cust_view.customer_fname, ":", cust_view.customer_lname) as name, concat(cust_view.customer_city, ":", cust_view.customer_state) as addr
+from cust_view, order_view
+where order_view.order_customer_id = cust_view.customer_id
+and to_date(from_unixtime(order_view.order_date / 1000)) not like '2013-03%' 
+group by cust_view.customer_id, concat(cust_view.customer_fname, ":", cust_view.customer_lname), concat(cust_view.customer_city, ":", cust_view.customer_state)
+""")
+
+result.select($"name", $"addr").write
+.json("testData/cca175/practice3/q1/output/")
+
+1)
+val data = spark.read
+.format("com.databricks.spark.avro")
+.load("testData/cca175/practice4/q1")
+.toDF()
+
+data.createOrReplaceTempView("order_view")
+val result = spark.sql("""
+select order_id, order_status, to_date(from_unixtime(order_date / 1000)) as order_date from order_view
+""")
+
+result.write
+.option("compression", "gzip")
+.parquet("testData/cca175/practice4/q1/output/")
+
+2)
+val data = spark.read
+.option("inferSchema","true")
+.option("delimiter", "\t")
+.csv("testData/cca175/practice4/q2")
+.toDF()
+
+data.createOrReplaceTempView("cust_view")
+val result = spark.sql("""
+select _c0 as customer_id, _c1 as customer_fname, _c2 as customer_lname, _c3 as customer_password from cust_view
+""")
+
+result.map(x=>x.mkString("|")).write
+.option("compression", "snappy")
+.orc("testData/cca175/practice4/q2/output/")
+
+3)
+val data = spark.sql("""
+select concat(lower(customer_fname ), "\t", lower(customer_lname), ":", upper(customer_city )) as customer_description from customers_p4_q31
+""")
+
+data.write
+.format("com.databricks.spark.avro")
+.saveAsTable("customers_p4_q3_output")
+
+4)
+val cust_data = spark.read
+.csv("testData/cca175/practice4/q4/customers")
+.toDF("customer_id","customer_fname","customer_lname","customer_email","customer_password","customer_street","customer_city","customer_state","customer_zipcode")
+
+val order_data = spark.read
+.csv("testData/cca175/practice4/q4/orders")
+.toDF("Order_id","order_date","order_customer_id","order_status")
+
+cust_data.createOrReplaceTempView("cust_view")
+order_data.createOrReplaceTempView("order_view")
+
+val result = spark.sql("""
+select cust_view.customer_id, cust_view.customer_fname, cust_view.customer_lname, count(1) as customer_count from cust_view, order_view
+where cust_view.customer_id = order_view.order_customer_id
+group by cust_view.customer_id, cust_view.customer_fname, cust_view.customer_lname
+""")
+
+result.createOrReplaceTempView("result_view")
+val output = spark.sql("""
+select customer_id, concat(customer_fname, "|", customer_lname), customer_count from result_view
+where customer_count > 4
+group by customer_id, concat(customer_fname, "|", customer_lname), customer_count
+order by customer_count asc 
+""")
+
+output.select($"concat(customer_fname, |, customer_lname)", $"customer_count").write
+.json("testData/cca175/practice4/q4/output/")

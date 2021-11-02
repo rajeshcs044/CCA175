@@ -1,0 +1,102 @@
+1)
+val customer_data = spark.read
+.option("inferSchema", "true")
+.option("delimiter", "\t")
+.csv("testData/cca175/practice2/q1/customers")
+.toDF("customer_id","customer_fname","customer_lname","customer_email","customer_password","customer_street","customer_city","customer_state","customer_zipcode")
+
+val order_data = spark.read
+.option("inferSchema", "true")
+.option("delimiter", "\t")
+.csv("testData/cca175/practice2/q1/orders")
+.toDF("Order_id","order_date","order_customer_id","order_status")
+
+val order_items_data = spark.read
+.option("inferSchema", "true")
+.option("delimiter", "\t")
+.csv("testData/cca175/practice2/q1/order_items")
+.toDF("Order_item_id","Order_item_order_id","order_item_product_id","Order_item_quantity","Order_item_subtotal","Order_item_product_price")
+
+customer_data.createOrReplaceTempView("cust_view")
+order_data.createOrReplaceTempView("order_view")
+order_items_data.createOrReplaceTempView("order_item_view")
+
+val result = spark.sql("""
+select cust_view.customer_id, cust_view.customer_fname as fname, cust_view.customer_lname as lname, cust_view.customer_city as city, sum(order_item_view.Order_item_subtotal) as order_amt
+from cust_view, order_view, order_item_view
+where cust_view.customer_id = order_view.order_customer_id
+and order_view.Order_id = order_item_view.Order_item_order_id
+--and sum(order_item_view.Order_item_subtotal) > 200
+group by cust_view.customer_id, cust_view.customer_fname, cust_view.customer_lname, cust_view.customer_city
+""")
+
+val output = result.filter($"order_amt" > 200)
+
+output.write
+.csv("testData/cca175/practice2/q1/output/")
+
+2)
+val data = spark.sql("""
+select upper(concat(customer_fname, "\t", customer_lname)) as customer_name, concat(lower(subStr(customer_street, 0, 10)), ":", upper(customer_state)) as customer_address 
+from customers_hive1
+where customer_fname like "Rich%"
+""")
+
+data.write
+.format("hive")
+.saveAsTable("customer_result")
+
+3)
+val data = spark.read
+.option("inferSchema", "true")
+.option("delimiter", "|")
+.csv("testData/cca175/practice2/q3")
+.toDF("customer_id", "name", "state")
+
+data.createOrReplaceTempView("cust_view")
+
+val result = spark.sql("""
+select state, count(customer_id) as customers_count
+from cust_view
+where name like"M%"
+group by state
+""")
+
+result.write
+.option("compression", "gzip")
+.option("fileFormat", "parquet")
+.format("hive")
+.saveAsTable("customer_m")
+
+4)
+val data = spark.sql("""
+select product_category_id, product_name, product_price, rank() over (partition by product_category_id order by product_price desc) as rank
+from product_ranked_new1
+""")
+
+data.map(x=>x.mkString("|")).repartition(4).write.csv("testData/cca175/practice2/q4/output/")
+
+5)
+val data = spark.read
+.parquet("testData/cca175/practice2/q5")
+.toDF()
+
+data.createOrReplaceTempView("order_view")
+val result = spark.sql("""
+select * from order_view where order_status = "PENDING"
+""")
+
+result.write
+.option("compression", "lzo")
+.orc("testData/cca175/practice2/q5/output/")
+
+6)
+val data = spark.read
+.option("delimiter", "\t")
+.csv("testData/cca175/practice2/q6")
+.toDF()
+
+val output = data.select($"_c0", $"_c1", $"_c2", $"_c3")
+
+output.map(x=>x.mkString("|")).write
+.text("testData/cca175/practice2/q6/output/")
